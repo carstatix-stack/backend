@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SELLER
+  ADMIN
+}
+
+enum ReportStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum MediaType {
+  PHOTO
+  VIDEO
+}
+
+enum InspectionRating {
+  GOOD
+  FAIR
+  ATTENTION
+  NOT_TESTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String?
+  phone        String?
+  role         UserRole @default(SELLER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  vehicles Vehicle[]
+  reports  Report[]
+  consents ConsentLog[]
+
+  @@map("users")
+}
+
+model Vehicle {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  vin       String
+  make      String?
+  model     String?
+  year      Int?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports Report[]
+
+  @@unique([userId, vin])
+  @@index([vin])
+  @@map("vehicles")
+}
+
+model Report {
+  id           String       @id @default(cuid())
+  userId       String       @map("user_id")
+  vehicleId    String       @map("vehicle_id")
+  status       ReportStatus @default(DRAFT)
+  progressStep Int          @default(1) @map("progress_step")
+  publicSlug   String?      @unique @map("public_slug")
+  qrImageUrl   String?      @map("qr_image_url")
+  publishedAt  DateTime?    @map("published_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  consent     ConsentLog?
+  obdReading  ObdReading?
+  media       MediaAsset[]
+  cosmetic    CosmeticRating?
+  inspections InspectionItem[]
+  listing     ListingDetail?
+
+  @@index([userId])
+  @@index([vehicleId])
+  @@index([status])
+  @@map("reports")
+}
+
+model ConsentLog {
+  id        String   @id @default(cuid())
+  reportId  String   @unique @map("report_id")
+  userId    String   @map("user_id")
+  vin       String
+  agreedAt  DateTime @default(now()) @map("agreed_at")
+  ipHash    String?  @map("ip_hash")
+  userAgent String?  @map("user_agent")
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("consent_logs")
+}
+
+model ObdReading {
+  id        String   @id @default(cuid())
+  reportId  String   @unique @map("report_id")
+  summary   Json
+  rawData   Json?    @map("raw_data")
+  scannedAt DateTime @default(now()) @map("scanned_at")
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@map("obd_readings")
+}
+
+model MediaAsset {
+  id         String    @id @default(cuid())
+  reportId   String    @map("report_id")
+  type       MediaType
+  category   String
+  storageKey String    @map("storage_key")
+  url        String?
+  gpsLat     Float?    @map("gps_lat")
+  gpsLng     Float?    @map("gps_lng")
+  capturedAt DateTime  @map("captured_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@map("media_assets")
+}
+
+model CosmeticRating {
+  id              String @id @default(cuid())
+  reportId        String @unique @map("report_id")
+  exteriorRating  Int    @map("exterior_rating")
+  interiorRating  Int    @map("interior_rating")
+  glassRating     Int    @map("glass_rating")
+  tireNotes       String? @map("tire_notes")
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@map("cosmetic_ratings")
+}
+
+model InspectionItem {
+  id           String           @id @default(cuid())
+  reportId     String           @map("report_id")
+  systemName   String           @map("system_name")
+  rating       InspectionRating
+  observations String?
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, systemName])
+  @@map("inspection_items")
+}
+
+model ListingDetail {
+  id           String   @id @default(cuid())
+  reportId     String   @unique @map("report_id")
+  askingPrice  Decimal? @map("asking_price") @db.Decimal(12, 2)
+  location     String?
+  phone        String?
+  email        String?
+  externalUrls Json?    @map("external_urls")
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@map("listing_details")
+}
