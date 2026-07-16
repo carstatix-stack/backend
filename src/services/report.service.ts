@@ -91,7 +91,7 @@ export async function listUserReports(userId: string) {
     include: {
       vehicle: true,
       obdReading: { select: { scannedAt: true } },
-      listing: { select: { askingPrice: true } },
+      listing: { select: { askingPrice: true, location: true } },
     },
   });
 }

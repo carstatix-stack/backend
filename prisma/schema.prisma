@@ -40,9 +40,10 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  vehicles Vehicle[]
-  reports  Report[]
-  consents ConsentLog[]
+  vehicles     Vehicle[]
+  reports      Report[]
+  consents     ConsentLog[]
+  savedReports SavedReport[]
 
   @@map("users")
 }
@@ -85,11 +86,26 @@ model Report {
   cosmetic    CosmeticRating?
   inspections InspectionItem[]
   listing     ListingDetail?
+  savedBy     SavedReport[]
 
   @@index([userId])
   @@index([vehicleId])
   @@index([status])
   @@map("reports")
+}
+
+model SavedReport {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  reportId  String   @map("report_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reportId])
+  @@index([userId])
+  @@map("saved_reports")
 }
 
 model ConsentLog {

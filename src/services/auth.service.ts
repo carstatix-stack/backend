@@ -7,7 +7,32 @@ import type { LoginInput, RegisterInput } from '../schemas/auth.schema.js';
 
 const SALT_ROUNDS = 12;
 
-export async function registerUser(input: RegisterInput) {
+type AuthUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+};
+
+async function signSession(app: FastifyInstance, user: AuthUser) {
+  const token = await app.jwt.sign({
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+  });
+
+  return {
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    },
+  };
+}
+
+export async function registerUser(app: FastifyInstance, input: RegisterInput) {
   const existing = await prisma.user.findUnique({
     where: { email: input.email.toLowerCase() },
   });
@@ -29,11 +54,10 @@ export async function registerUser(input: RegisterInput) {
       email: true,
       name: true,
       role: true,
-      createdAt: true,
     },
   });
 
-  return user;
+  return signSession(app, user);
 }
 
 export async function loginUser(app: FastifyInstance, input: LoginInput) {
@@ -50,21 +74,12 @@ export async function loginUser(app: FastifyInstance, input: LoginInput) {
     throw new AppError(401, 'Invalid email or password', 'INVALID_CREDENTIALS');
   }
 
-  const token = await app.jwt.sign({
-    sub: user.id,
+  return signSession(app, {
+    id: user.id,
     email: user.email,
+    name: user.name,
     role: user.role,
   });
-
-  return {
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-    },
-  };
 }
 
 export async function getUserById(userId: string) {
