@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -44,6 +45,7 @@ model User {
   reports      Report[]
   consents     ConsentLog[]
   savedReports SavedReport[]
+  obdScans     ObdScan[]
 
   @@map("users")
 }
@@ -87,11 +89,33 @@ model Report {
   inspections InspectionItem[]
   listing     ListingDetail?
   savedBy     SavedReport[]
+  obdScans    ObdScan[]
 
   @@index([userId])
   @@index([vehicleId])
   @@index([status])
   @@map("reports")
+}
+
+/// Account-owned OBD scan history (standalone + optional onboarding rows).
+/// Distinct from ObdReading, which is the single draft snapshot on a Report.
+model ObdScan {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  reportId   String?  @map("report_id")
+  vin        String?
+  source     String // STANDALONE | ONBOARDING
+  summary    Json
+  rawData    Json?    @map("raw_data")
+  deviceName String?  @map("device_name")
+  scannedAt  DateTime @map("scanned_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  report Report? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  @@index([userId, scannedAt])
+  @@map("obd_scans")
 }
 
 model SavedReport {

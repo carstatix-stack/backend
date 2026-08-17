@@ -6,8 +6,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
+    "start:prod": "prisma migrate deploy && node dist/index.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
@@ -30,6 +31,7 @@
     "dotenv": "^16.5.0",
     "fastify": "^5.3.3",
     "nanoid": "^5.1.5",
+    "prisma": "^6.8.2",
     "qrcode": "^1.5.4",
     "zod": "^3.25.28"
   },
@@ -37,7 +39,6 @@
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^22.15.21",
     "@types/qrcode": "^1.5.5",
-    "prisma": "^6.8.2",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   }
