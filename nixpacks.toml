@@ -1,2 +1,9 @@
-[variables]
-NIXPACKS_NODE_VERSION = "20"
+# Railway/Nixpacks: avoid `npm ci` (EBUSY on node_modules/.cache).
+[phases.install]
+cmds = ["npm install --include=dev"]
+
+[phases.build]
+cmds = ["npx prisma generate", "npm run build"]
+
+[start]
+cmd = "npx prisma migrate deploy && node dist/index.js"
