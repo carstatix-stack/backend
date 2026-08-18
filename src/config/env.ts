@@ -6,9 +6,10 @@ config();
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
-  HOST: z.string().default('0.0.0.0'),
+  HOST: z.string().optional(),
   PUBLIC_BASE_URL: z.string().url().optional(),
   RAILWAY_PUBLIC_DOMAIN: z.string().optional(),
+  RAILWAY_ENVIRONMENT: z.string().optional(),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().default('7d'),
@@ -49,9 +50,15 @@ if (!publicBaseUrl) {
   process.exit(1);
 }
 
+const onRailway = Boolean(
+  parsed.data.RAILWAY_ENVIRONMENT || parsed.data.RAILWAY_PUBLIC_DOMAIN,
+);
+
 export const env = {
   ...parsed.data,
   PUBLIC_BASE_URL: publicBaseUrl,
+  // Railway healthchecks reach the container over IPv6. 0.0.0.0 is IPv4-only.
+  HOST: parsed.data.HOST ?? (onRailway ? '::' : '0.0.0.0'),
 };
 
 export function isS3Configured(): boolean {

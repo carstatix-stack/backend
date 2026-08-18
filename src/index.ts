@@ -5,14 +5,6 @@ import { prisma } from './lib/prisma.js';
 async function main() {
   const app = await buildApp();
 
-  try {
-    await prisma.$connect();
-    app.log.info('Connected to PostgreSQL');
-  } catch (err) {
-    app.log.error(err, 'Failed to connect to PostgreSQL');
-    process.exit(1);
-  }
-
   const shutdown = async () => {
     await app.close();
     await prisma.$disconnect();
@@ -22,8 +14,20 @@ async function main() {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
+  // Bind first so Railway healthchecks can succeed even if Postgres is slow.
   await app.listen({ port: env.PORT, host: env.HOST });
-  app.log.info(`Server listening on http://${env.HOST}:${env.PORT}`);
+  app.log.info(
+    { host: env.HOST, port: env.PORT, address: app.server.address() },
+    'Server listening',
+  );
+
+  try {
+    await prisma.$connect();
+    app.log.info('Connected to PostgreSQL');
+  } catch (err) {
+    app.log.error(err, 'Failed to connect to PostgreSQL');
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {
