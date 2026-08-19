@@ -10,6 +10,7 @@ import { isAppError } from './lib/errors.js';
 import { registerAuthHooks } from './plugins/auth.plugin.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { exploreRoutes } from './routes/explore.routes.js';
+import { dtcExplanationRoutes } from './routes/dtc-explanation.routes.js';
 import { obdScansRoutes } from './routes/obd-scans.routes.js';
 import { publicRoutes } from './routes/public.routes.js';
 import { reportsRoutes } from './routes/reports.routes.js';
@@ -70,6 +71,7 @@ export async function buildApp() {
   await app.register(vinRoutes, { prefix: '/api/vin' });
   await app.register(reportsRoutes, { prefix: '/api/reports' });
   await app.register(obdScansRoutes, { prefix: '/api/obd-scans' });
+  await app.register(dtcExplanationRoutes, { prefix: '/api/obd' });
   await app.register(exploreRoutes, { prefix: '/api/explore' });
   await app.register(savedRoutes, { prefix: '/api/saved' });
   await app.register(publicRoutes);

@@ -26,6 +26,10 @@ const envSchema = z.object({
   S3_MAX_PHOTO_BYTES: z.coerce.number().int().positive().default(15 * 1024 * 1024),
   S3_MAX_VIDEO_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
   S3_PRESIGN_EXPIRES_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+
+  // OpenAI — optional; required for AI DTC explanations
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_MODEL: z.string().default('gpt-4o-mini'),
 });
 
 const parsed = envSchema.safeParse(process.env);

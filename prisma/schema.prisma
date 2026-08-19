@@ -215,3 +215,15 @@ model ListingDetail {
 
   @@map("listing_details")
 }
+
+/// Cached plain-English OBD-II DTC explanations (generated once per code).
+model DtcExplanation {
+  code              String   @id
+  laymanExplanation String   @map("layman_explanation")
+  whatToDo          String?  @map("what_to_do")
+  model             String   @default("gpt-4o-mini")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("dtc_explanations")
+}
