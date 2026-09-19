@@ -192,13 +192,14 @@ export async function saveInspections(
       data: input.items.map((item) => ({
         reportId,
         systemName: item.systemName,
-        rating: item.rating as InspectionRating,
+        rating: (item.rating as InspectionRating | undefined) ?? null,
         observations: item.observations,
       })),
     }),
     prisma.report.update({
       where: { id: reportId },
-      data: { progressStep: 5 },
+      // 3 = 12-point inspection complete (photos+notes merged).
+      data: { progressStep: 3 },
     }),
   ]);
 

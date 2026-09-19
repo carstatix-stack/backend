@@ -1,3 +1,8 @@
+import {
+  INSPECTION_POINTS,
+  labelForPhotoCategory,
+} from './inspection-points.js';
+
 type PublicReportData = Awaited<
   ReturnType<typeof import('../services/report.service.js').getPublicReport>
 >;
@@ -28,7 +33,7 @@ function formatPrice(value: unknown): string | null {
 }
 
 function categoryLabel(category: string): string {
-  return category.replace(/_/g, ' ');
+  return labelForPhotoCategory(category) ?? category.replace(/_/g, ' ');
 }
 
 function ratingStars(rating: number): string {
@@ -36,7 +41,8 @@ function ratingStars(rating: number): string {
   return '★'.repeat(filled) + '☆'.repeat(5 - filled);
 }
 
-function inspectionBadge(rating: string): string {
+function inspectionBadge(rating: string | null | undefined): string {
+  if (!rating) return '';
   const label = rating.replace(/_/g, ' ');
   const tone =
     rating === 'GOOD'
@@ -62,9 +68,9 @@ function section(title: string, body: string, eyebrow?: string): string {
 function pickCoverPhoto(media: PublicReportData['media']): MediaItem | null {
   const photos = (media ?? []).filter((m) => m.type === 'PHOTO' && m.url);
   if (!photos.length) return null;
-  const preferred = photos.find(
-    (m) => m.category.toLowerCase() === 'front_exterior',
-  );
+  const preferred =
+    photos.find((m) => m.category.toLowerCase() === 'insp_brakes') ??
+    photos.find((m) => m.category.toLowerCase() === 'front_exterior');
   return preferred ?? photos[0] ?? null;
 }
 
@@ -194,15 +200,31 @@ function renderCosmetic(cosmetic: PublicReportData['cosmetic']): string {
 
 function renderInspections(
   inspections: PublicReportData['inspections'],
+  media: PublicReportData['media'],
 ): string {
   if (!inspections?.length) {
     return '<p class="empty">No inspection checklist recorded.</p>';
   }
 
+  const photosByCategory = new Map(
+    media
+      .filter((m) => m.type === 'PHOTO' && m.url)
+      .map((m) => [m.category, m] as const),
+  );
+
   const items = inspections
     .map((item) => {
+      const point = INSPECTION_POINTS.find((p) => p.label === item.systemName);
+      const photo = point
+        ? photosByCategory.get(point.photoCategory)
+        : undefined;
       const obs = item.observations
         ? `<p class="obs">${escapeHtml(item.observations)}</p>`
+        : '<p class="obs empty">No notes</p>';
+      const photoHtml = photo?.url
+        ? `<button type="button" class="inspect-photo" data-gallery-src="${escapeHtml(photo.url)}">
+             <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(item.systemName)}" loading="lazy" />
+           </button>`
         : '';
       return `
         <div class="inspect-item">
@@ -211,6 +233,7 @@ function renderInspections(
             ${inspectionBadge(item.rating)}
           </div>
           ${obs}
+          ${photoHtml}
         </div>`;
     })
     .join('');
@@ -606,6 +629,12 @@ export function renderPublicReportHtml(data: PublicReportData): string {
     .inspect-item{padding:12px;background:#f8fafc;border-radius:12px;border:1px solid var(--line)}
     .inspect-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
     .obs{margin:8px 0 0;font-size:13px;color:#475569}
+    .obs.empty{color:#94a3b8;font-style:italic}
+    .inspect-photo{
+      display:block;margin:10px 0 0;padding:0;border:0;background:transparent;
+      border-radius:10px;overflow:hidden;cursor:zoom-in;width:100%;max-width:220px;
+    }
+    .inspect-photo img{display:block;width:100%;height:120px;object-fit:cover}
     .listing-price{font-size:1.6rem;font-weight:800;color:var(--brand)}
     .listing-meta{margin:8px 0 0;color:var(--muted);font-size:14px}
     .photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -693,8 +722,16 @@ export function renderPublicReportHtml(data: PublicReportData): string {
     </header>
 
     ${section('Diagnostics at a glance', renderObd(obdSummary), 'OBD scan')}
-    ${section('Cosmetic condition', renderCosmetic(data.cosmetic), 'Appearance')}
-    ${section('Mechanical inspection', renderInspections(data.inspections), 'Checklist')}
+    ${section(
+      'Vehicle inspection',
+      renderInspections(data.inspections, data.media),
+      'Checklist',
+    )}
+    ${
+      data.cosmetic
+        ? section('Cosmetic condition (legacy)', renderCosmetic(data.cosmetic), 'Appearance')
+        : ''
+    }
     ${section('Listing', renderListing(data.listing), 'Seller')}
     ${section('Photo gallery', renderMedia(data.media), 'Media')}
 

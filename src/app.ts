@@ -65,6 +65,7 @@ export async function buildApp() {
     service: 'carstatix-api',
     timestamp: new Date().toISOString(),
     mediaUploads: isS3Configured(),
+    aiExplanations: Boolean(env.OPENAI_API_KEY?.trim()),
   }));
 
   await app.register(authRoutes, { prefix: '/api/auth' });

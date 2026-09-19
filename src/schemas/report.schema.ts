@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { INSPECTION_LABELS, INSPECTION_POINT_COUNT } from '../lib/inspection-points.js';
+
 const vinRegex = /^[A-HJ-NPR-Z0-9]{17}$/i;
 
 export const startReportSchema = z.object({
@@ -15,6 +17,7 @@ export const obdReadingSchema = z.object({
   rawData: z.record(z.unknown()).optional(),
 });
 
+/** @deprecated Cosmetic ratings are no longer used by the 12-point inspection flow. */
 export const cosmeticSchema = z.object({
   exteriorRating: z.number().int().min(1).max(5),
   interiorRating: z.number().int().min(1).max(5),
@@ -23,14 +26,42 @@ export const cosmeticSchema = z.object({
 });
 
 export const inspectionItemSchema = z.object({
-  systemName: z.string().min(1).max(80),
-  rating: z.enum(['GOOD', 'FAIR', 'ATTENTION', 'NOT_TESTED']),
-  observations: z.string().max(2000).optional(),
+  systemName: z
+    .string()
+    .min(1)
+    .max(80)
+    .refine((value) => INSPECTION_LABELS.has(value), {
+      message: 'Unknown inspection point',
+    }),
+  /// Legacy optional — new flow omits rating (notes + photo only).
+  rating: z.enum(['GOOD', 'FAIR', 'ATTENTION', 'NOT_TESTED']).optional(),
+  observations: z.string().trim().min(1, 'Notes are required').max(2000),
 });
 
-export const inspectionBatchSchema = z.object({
-  items: z.array(inspectionItemSchema).min(1).max(20),
-});
+export const inspectionBatchSchema = z
+  .object({
+    items: z.array(inspectionItemSchema).min(INSPECTION_POINT_COUNT).max(INSPECTION_POINT_COUNT),
+  })
+  .superRefine((body, ctx) => {
+    const names = body.items.map((item) => item.systemName);
+    const unique = new Set(names);
+    if (unique.size !== names.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Duplicate inspection points are not allowed',
+        path: ['items'],
+      });
+    }
+    for (const label of INSPECTION_LABELS) {
+      if (!unique.has(label)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Missing inspection point: ${label}`,
+          path: ['items'],
+        });
+      }
+    }
+  });
 
 export const progressStepSchema = z.object({
   progressStep: z.number().int().min(1).max(7),

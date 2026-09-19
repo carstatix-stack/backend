@@ -1,10 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 
 import { AppError } from '../lib/errors.js';
+import { renderPrivacyPolicyHtml } from '../lib/privacy-policy-html.js';
 import { renderPublicReportHtml } from '../lib/public-report-html.js';
 import * as reportService from '../services/report.service.js';
 
 export async function publicRoutes(app: FastifyInstance): Promise<void> {
+  /** Public privacy policy for App Store Connect and in-app links. */
+  app.get('/privacy', async (_request, reply) => {
+    return reply.type('text/html').send(renderPrivacyPolicyHtml());
+  });
+
   app.get('/reports/search/:vin', async (request, reply) => {
     const { vin } = request.params as { vin: string };
     const normalized = vin.trim().toUpperCase();

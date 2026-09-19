@@ -190,10 +190,11 @@ model CosmeticRating {
 }
 
 model InspectionItem {
-  id           String           @id @default(cuid())
-  reportId     String           @map("report_id")
-  systemName   String           @map("system_name")
-  rating       InspectionRating
+  id           String            @id @default(cuid())
+  reportId     String            @map("report_id")
+  systemName   String            @map("system_name")
+  /// Optional legacy rating. New 12-point flow uses notes + photo only.
+  rating       InspectionRating?
   observations String?
 
   report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)

@@ -150,11 +150,6 @@ export async function confirmUpload(
     data: { url },
   });
 
-  await prisma.report.update({
-    where: { id: reportId },
-    data: { progressStep: { set: 3 } },
-  });
-
   return {
     asset: {
       id: updated.id,

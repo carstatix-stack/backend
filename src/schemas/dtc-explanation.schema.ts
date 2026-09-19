@@ -1,10 +1,22 @@
 import { z } from 'zod';
 
+/** Normalize adapter quirks: spaces, $ prefixes, bare 4-digit codes. */
+function normalizeDtcCode(raw: string): string {
+  let value = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (/^[0-9A-F]{4}$/.test(value)) {
+    value = `P${value}`;
+  }
+  return value;
+}
+
 const dtcCodeSchema = z
   .string()
   .trim()
-  .toUpperCase()
-  .regex(/^[PCBU][0-9A-F]{4}$/, 'Invalid OBD-II DTC format');
+  .min(1)
+  .transform(normalizeDtcCode)
+  .refine((value) => /^[PCBU][0-9A-F]{4}$/.test(value), {
+    message: 'Invalid OBD-II DTC format',
+  });
 
 export const dtcStatusSchema = z.enum(['stored', 'pending', 'permanent']);
 
@@ -14,7 +26,12 @@ export const explainDtcCodesSchema = z.object({
       z.object({
         code: dtcCodeSchema,
         status: dtcStatusSchema.optional(),
-        title: z.string().trim().max(200).optional(),
+        title: z
+          .string()
+          .trim()
+          .max(500)
+          .optional()
+          .transform((value) => (value && value.length > 0 ? value.slice(0, 200) : undefined)),
       }),
     )
     .min(1)

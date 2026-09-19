@@ -6,6 +6,9 @@ import type { ExplainDtcCodesInput } from '../schemas/dtc-explanation.schema.js'
 const DISCLAIMER =
   'Informational only — not a diagnosis. Have a qualified mechanic inspect the vehicle.';
 
+/** Bump when prompts change so cached generic answers are regenerated. */
+const PROMPT_VERSION = 'p2-priority';
+
 type ExplanationPayload = {
   code: string;
   laymanExplanation: string;
@@ -22,6 +25,14 @@ function isOpenAiConfigured(): boolean {
   return Boolean(env.OPENAI_API_KEY?.trim());
 }
 
+function cacheModelTag(): string {
+  return `${env.OPENAI_MODEL}:${PROMPT_VERSION}`;
+}
+
+function isCurrentPromptCache(model: string | null | undefined): boolean {
+  return Boolean(model && model.includes(PROMPT_VERSION));
+}
+
 function vehicleContext(vehicle?: ExplainDtcCodesInput['vehicle']): string | null {
   if (!vehicle) return null;
   const parts = [vehicle.year, vehicle.make, vehicle.model]
@@ -32,10 +43,14 @@ function vehicleContext(vehicle?: ExplainDtcCodesInput['vehicle']): string | nul
 
 function buildSystemPrompt(): string {
   return [
-    'You explain OBD-II diagnostic trouble codes (DTCs) to non-mechanics.',
-    'Use plain English. Avoid jargon unless you immediately define it.',
-    'Do not invent vehicle-specific details unless provided.',
-    'Never claim the car is safe or unsafe to drive — suggest professional inspection when appropriate.',
+    'You are an automotive diagnostic educator for car owners who are not mechanics.',
+    'For each OBD-II DTC, explain that specific code — not a vague category summary.',
+    'Name the subsystem involved (e.g. oxygen sensor circuit, ignition coil, EVAP purge valve).',
+    'Describe what the ECU detected, what typically fails, and symptoms the driver may notice.',
+    'Rank recommended actions by priority: Urgent (stop/limit driving or get checked ASAP), Soon (schedule service), Optional (monitor / DIY checks).',
+    'Use plain English; define any technical term in the same sentence.',
+    'Do not invent vehicle-specific parts unless year/make/model is provided.',
+    'Never claim the car is safe or unsafe to drive — state urgency levels instead.',
     'Return strict JSON only.',
   ].join(' ');
 }
@@ -47,23 +62,33 @@ function buildUserPrompt(
   const vehicleLine = vehicleContext(vehicle);
   const codeLines = codes.map((entry) => {
     const status = entry.status ? ` (${entry.status})` : '';
-    const title = entry.title ? ` — ${entry.title}` : '';
+    const title = entry.title ? ` — official title: ${entry.title}` : '';
     return `- ${entry.code}${status}${title}`;
   });
 
   return [
-    'Explain each DTC below for a car owner who is not a mechanic.',
-    vehicleLine ? `Vehicle context: ${vehicleLine}` : 'Vehicle context: unknown (keep explanations generic).',
+    'Explain each DTC for a non-mechanic car owner.',
+    vehicleLine
+      ? `Vehicle context: ${vehicleLine}`
+      : 'Vehicle context: unknown (stay accurate to the SAE/generic meaning of the code).',
     '',
     'Codes:',
     ...codeLines,
+    '',
+    'For EACH code, fill:',
+    '- laymanExplanation: 3–5 sentences. Cover (1) exact meaning of this code, (2) which system/component is involved, (3) what the computer saw go wrong, (4) likely symptoms, (5) why it matters.',
+    '- whatToDo: prioritized action list as plain text using these labels on separate lines:',
+    '  Urgent: ...',
+    '  Soon: ...',
+    '  Optional: ...',
+    '  Skip a priority line only if it truly does not apply.',
     '',
     'Respond with JSON shaped exactly like:',
     '{',
     '  "explanations": {',
     '    "P0300": {',
-    '      "laymanExplanation": "2-4 short sentences: what it means, common symptoms, general severity.",',
-    '      "whatToDo": "1-2 sentences: practical next step for the owner."',
+    '      "laymanExplanation": "...",',
+    '      "whatToDo": "Urgent: ...\\nSoon: ...\\nOptional: ..."',
     '    }',
     '  }',
     '}',
@@ -91,8 +116,8 @@ async function callOpenAi(
     },
     body: JSON.stringify({
       model: env.OPENAI_MODEL,
-      temperature: 0.3,
-      max_tokens: 120 * codes.length + 120,
+      temperature: 0.35,
+      max_tokens: Math.min(900 * codes.length + 200, 4000),
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: buildSystemPrompt() },
@@ -160,18 +185,19 @@ async function callOpenAi(
 }
 
 async function cacheExplanation(code: string, generated: GeneratedExplanation) {
+  const model = cacheModelTag();
   await prisma.dtcExplanation.upsert({
     where: { code },
     create: {
       code,
       laymanExplanation: generated.laymanExplanation,
       whatToDo: generated.whatToDo,
-      model: env.OPENAI_MODEL,
+      model,
     },
     update: {
       laymanExplanation: generated.laymanExplanation,
       whatToDo: generated.whatToDo,
-      model: env.OPENAI_MODEL,
+      model,
     },
   });
 }
@@ -186,7 +212,11 @@ export async function explainDtcCodes(input: ExplainDtcCodesInput) {
   const cachedRows = await prisma.dtcExplanation.findMany({
     where: { code: { in: requested.map((entry) => entry.code) } },
   });
-  const cachedByCode = new Map(cachedRows.map((row) => [row.code, row]));
+  const cachedByCode = new Map(
+    cachedRows
+      .filter((row) => isCurrentPromptCache(row.model))
+      .map((row) => [row.code, row]),
+  );
 
   const missing = requested.filter((entry) => !cachedByCode.has(entry.code));
   if (missing.length > 0) {
@@ -199,7 +229,7 @@ export async function explainDtcCodes(input: ExplainDtcCodesInput) {
         code: entry.code,
         laymanExplanation: explanation.laymanExplanation,
         whatToDo: explanation.whatToDo,
-        model: env.OPENAI_MODEL,
+        model: cacheModelTag(),
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -207,7 +237,11 @@ export async function explainDtcCodes(input: ExplainDtcCodesInput) {
   }
 
   const explanations: Record<string, ExplanationPayload> = {};
-  const initiallyCached = new Set(cachedRows.map((row) => row.code));
+  const initiallyCached = new Set(
+    cachedRows
+      .filter((row) => isCurrentPromptCache(row.model))
+      .map((row) => row.code),
+  );
 
   for (const entry of requested) {
     const row = cachedByCode.get(entry.code);
