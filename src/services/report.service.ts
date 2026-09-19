@@ -109,7 +109,25 @@ export async function deleteDraftReport(reportId: string, userId: string) {
     throw new AppError(400, 'Only draft reports can be deleted', 'REPORT_NOT_DRAFT');
   }
 
-  await prisma.report.delete({ where: { id: reportId } });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.mediaAsset.deleteMany({ where: { reportId } });
+      await tx.inspectionItem.deleteMany({ where: { reportId } });
+      await tx.obdReading.deleteMany({ where: { reportId } });
+      await tx.cosmeticRating.deleteMany({ where: { reportId } });
+      await tx.listingDetail.deleteMany({ where: { reportId } });
+      await tx.consentLog.deleteMany({ where: { reportId } });
+      await tx.savedReport.deleteMany({ where: { reportId } });
+      await tx.obdScan.updateMany({
+        where: { reportId },
+        data: { reportId: null },
+      });
+      await tx.report.delete({ where: { id: reportId } });
+    });
+  } catch (error) {
+    throw new AppError(409, 'Could not delete this draft. Try again.', 'DRAFT_DELETE_FAILED');
+  }
+
   return { ok: true };
 }
 
