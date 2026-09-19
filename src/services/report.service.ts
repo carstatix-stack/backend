@@ -96,6 +96,23 @@ export async function listUserReports(userId: string) {
   });
 }
 
+export async function deleteDraftReport(reportId: string, userId: string) {
+  const report = await prisma.report.findFirst({
+    where: { id: reportId, userId },
+  });
+
+  if (!report) {
+    throw new AppError(404, 'Report not found', 'REPORT_NOT_FOUND');
+  }
+
+  if (report.status !== 'DRAFT') {
+    throw new AppError(400, 'Only draft reports can be deleted', 'REPORT_NOT_DRAFT');
+  }
+
+  await prisma.report.delete({ where: { id: reportId } });
+  return { ok: true };
+}
+
 export async function getReportForOwner(reportId: string, userId: string) {
   const report = await prisma.report.findFirst({
     where: { id: reportId, userId },

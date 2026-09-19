@@ -37,6 +37,12 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ report });
   });
 
+  app.delete('/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = await reportService.deleteDraftReport(id, request.userId!);
+    return reply.send(result);
+  });
+
   app.patch('/:id/progress', async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = progressStepSchema.parse(request.body);
