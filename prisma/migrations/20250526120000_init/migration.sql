@@ -124,7 +124,7 @@ CREATE TABLE "inspection_items" (
 CREATE TABLE "listing_details" (
     "id" TEXT NOT NULL,
     "report_id" TEXT NOT NULL,
-    "asking_price" DECIMAL(12,2),
+    "inspector" DECIMAL(12,2),
     "location" TEXT,
     "phone" TEXT,
     "email" TEXT,
