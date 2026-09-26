@@ -68,19 +68,49 @@ export const progressStepSchema = z.object({
   progressStep: z.number().int().min(1).max(7),
 });
 
-export const listingSchema = z.object({
-  askingPrice: z.number().positive().optional(),
-  location: z.string().max(200).optional(),
-  phone: z
-    .string()
-    .min(1, 'Phone number is required')
-    .max(30)
-    .refine((value) => value.replace(/\D/g, '').length >= 7, {
-      message: 'Phone must contain at least 7 digits',
-    }),
-  email: z.string().email('Valid email address is required'),
-  externalUrls: z.array(z.string().url()).max(10).optional(),
-});
+export const listingSchema = z
+  .object({
+    inspector: z.number().positive().optional(),
+    location: z.string().max(200).optional(),
+    phone: z.string().max(30).optional(),
+    email: z
+      .string()
+      .max(254)
+      .optional()
+      .transform((value) => (value == null || value.trim() === '' ? undefined : value.trim())),
+    externalUrls: z.array(z.string().url()).max(10).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const phone = (data.phone ?? '').trim();
+    const email = data.email ?? '';
+    const phoneDigits = phone.replace(/\D/g, '');
+    const hasPhone = phoneDigits.length >= 7;
+    const hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+    if (phone && !hasPhone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Phone must contain at least 7 digits',
+        path: ['phone'],
+      });
+    }
+
+    if (email && !hasEmail) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Valid email address is required',
+        path: ['email'],
+      });
+    }
+
+    if (!hasPhone && !hasEmail) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide a phone number or an email address',
+        path: ['phone'],
+      });
+    }
+  });
 
 export type StartReportInput = z.infer<typeof startReportSchema>;
 export type ObdReadingInput = z.infer<typeof obdReadingSchema>;

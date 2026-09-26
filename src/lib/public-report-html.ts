@@ -246,11 +246,11 @@ function renderListing(listing: PublicReportData['listing']): string {
     return '<p class="empty">No listing details recorded.</p>';
   }
 
-  const price = formatPrice(listing.askingPrice);
+  const price = formatPrice(listing.inspector);
   const parts: string[] = [];
   if (price) {
     parts.push(
-      `<div class="listing-price">${escapeHtml(price)}</div>`,
+      `<div class="listing-price"><span class="listing-label">Inspector</span> ${escapeHtml(price)}</div>`,
     );
   }
   if (listing.location) {
@@ -510,7 +510,7 @@ export function renderPublicReportHtml(data: PublicReportData): string {
 
   const obdSummary = data.obd as Record<string, unknown> | null;
   const cover = pickCoverPhoto(data.media);
-  const price = formatPrice(data.listing?.askingPrice);
+  const price = formatPrice(data.listing?.inspector);
   const hasObd = Boolean(obdSummary);
   const hasInspection = Boolean(data.inspections?.length);
 
@@ -636,6 +636,7 @@ export function renderPublicReportHtml(data: PublicReportData): string {
     }
     .inspect-photo img{display:block;width:100%;height:120px;object-fit:cover}
     .listing-price{font-size:1.6rem;font-weight:800;color:var(--brand)}
+    .listing-label{display:block;font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:.2rem}
     .listing-meta{margin:8px 0 0;color:var(--muted);font-size:14px}
     .photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
     .photo{
@@ -711,7 +712,7 @@ export function renderPublicReportHtml(data: PublicReportData): string {
       ${heroMedia}
       <div class="hero-body">
         <h1>${escapeHtml(title || 'Vehicle')}</h1>
-        <p class="hero-sub">VIN ${escapeHtml(data.vehicle.vinMasked)}</p>
+        <p class="hero-sub">VIN ${escapeHtml(data.vehicle.vin)}</p>
         ${price ? `<p class="hero-price">${escapeHtml(price)}</p>` : ''}
         <div class="chip-row">
           ${hasObd ? '<span class="badge badge-good">OBD verified</span>' : '<span class="badge badge-muted">No OBD</span>'}

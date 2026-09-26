@@ -91,7 +91,7 @@ export async function listUserReports(userId: string) {
     include: {
       vehicle: true,
       obdReading: { select: { scannedAt: true } },
-      listing: { select: { askingPrice: true, location: true } },
+      listing: { select: { inspector: true, location: true } },
     },
   });
 }
@@ -252,17 +252,17 @@ export async function saveListing(
     where: { reportId },
     create: {
       reportId,
-      askingPrice: input.askingPrice,
+      inspector: input.inspector,
       location: input.location,
-      phone: input.phone,
-      email: input.email,
+      phone: input.phone?.trim() || null,
+      email: input.email?.trim() || null,
       externalUrls: input.externalUrls as Prisma.InputJsonValue | undefined,
     },
     update: {
-      askingPrice: input.askingPrice,
+      inspector: input.inspector,
       location: input.location,
-      phone: input.phone,
-      email: input.email,
+      phone: input.phone?.trim() || null,
+      email: input.email?.trim() || null,
       externalUrls: input.externalUrls as Prisma.InputJsonValue | undefined,
     },
   });
@@ -305,8 +305,8 @@ export async function publishReport(reportId: string, userId: string) {
   };
 }
 
-function maskVin(vin: string): string {
-  return vin.length > 8 ? `${vin.slice(0, 4)}…${vin.slice(-4)}` : vin;
+function fullVin(vin: string): string {
+  return vin.trim().toUpperCase();
 }
 
 export async function searchPublishedReportsByVin(vin: string) {
@@ -333,11 +333,11 @@ export async function searchPublishedReportsByVin(vin: string) {
       make: report.vehicle.make,
       model: report.vehicle.model,
       year: report.vehicle.year,
-      vinMasked: maskVin(report.vehicle.vin),
+      vin: fullVin(report.vehicle.vin),
     },
     listing: report.listing
       ? {
-          askingPrice: report.listing.askingPrice,
+          inspector: report.listing.inspector,
           location: report.listing.location,
         }
       : null,
@@ -367,7 +367,7 @@ export async function getPublicReport(slug: string) {
     throw new AppError(404, 'Report not found', 'REPORT_NOT_FOUND');
   }
 
-  const maskedVin = maskVin(report.vehicle.vin);
+  const vin = fullVin(report.vehicle.vin);
 
   return {
     slug: report.publicSlug,
@@ -376,14 +376,14 @@ export async function getPublicReport(slug: string) {
       make: report.vehicle.make,
       model: report.vehicle.model,
       year: report.vehicle.year,
-      vinMasked: maskedVin,
+      vin,
     },
     obd: report.obdReading?.summary ?? null,
     cosmetic: report.cosmetic,
     inspections: report.inspections,
     listing: report.listing
       ? {
-          askingPrice: report.listing.askingPrice,
+          inspector: report.listing.inspector,
           location: report.listing.location,
         }
       : null,

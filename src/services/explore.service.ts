@@ -5,10 +5,6 @@ import { AppError } from '../lib/errors.js';
 import { prisma } from '../lib/prisma.js';
 import type { ExploreQuery } from '../schemas/explore.schema.js';
 
-function maskVin(vin: string): string {
-  return vin.length > 8 ? `${vin.slice(0, 4)}…${vin.slice(-4)}` : vin;
-}
-
 type ReportCardSource = {
   publicSlug: string | null;
   publishedAt: Date | null;
@@ -19,7 +15,7 @@ type ReportCardSource = {
     vin: string;
   };
   listing: {
-    askingPrice: Prisma.Decimal | null;
+    inspector: Prisma.Decimal | null;
     location: string | null;
   } | null;
 };
@@ -33,11 +29,11 @@ export function toPublicReportCard(report: ReportCardSource) {
       make: report.vehicle.make,
       model: report.vehicle.model,
       year: report.vehicle.year,
-      vinMasked: maskVin(report.vehicle.vin),
+      vin: report.vehicle.vin.trim().toUpperCase(),
     },
     listing: report.listing
       ? {
-          askingPrice: report.listing.askingPrice,
+          inspector: report.listing.inspector,
           location: report.listing.location,
         }
       : null,
@@ -60,6 +56,7 @@ export async function listExploreFeed(query: ExploreQuery) {
     where.OR = [
       { vehicle: { make: { contains: term, mode: 'insensitive' } } },
       { vehicle: { model: { contains: term, mode: 'insensitive' } } },
+      { vehicle: { vin: { contains: term.toUpperCase() } } },
     ];
   }
 

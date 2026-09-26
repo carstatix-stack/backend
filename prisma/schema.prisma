@@ -206,7 +206,8 @@ model InspectionItem {
 model ListingDetail {
   id           String   @id @default(cuid())
   reportId     String   @unique @map("report_id")
-  askingPrice  Decimal? @map("asking_price") @db.Decimal(12, 2)
+  /// Inspector fee / amount shown on the listing (formerly asking_price).
+  inspector    Decimal? @map("inspector") @db.Decimal(12, 2)
   location     String?
   phone        String?
   email        String?
