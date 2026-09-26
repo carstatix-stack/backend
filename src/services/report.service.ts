@@ -233,7 +233,7 @@ export async function saveInspections(
     }),
     prisma.report.update({
       where: { id: reportId },
-      // 3 = 12-point inspection complete (photos+notes merged).
+      // 3 = 12-point inspection complete (indicators + required photos).
       data: { progressStep: 3 },
     }),
   ]);

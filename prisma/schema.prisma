@@ -193,7 +193,7 @@ model InspectionItem {
   id           String            @id @default(cuid())
   reportId     String            @map("report_id")
   systemName   String            @map("system_name")
-  /// Optional legacy rating. New 12-point flow uses notes + photo only.
+  /// Condition indicator: GOOD (green), FAIR (blue), ATTENTION (red).
   rating       InspectionRating?
   observations String?
 

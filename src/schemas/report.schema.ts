@@ -33,9 +33,10 @@ export const inspectionItemSchema = z.object({
     .refine((value) => INSPECTION_LABELS.has(value), {
       message: 'Unknown inspection point',
     }),
-  /// Legacy optional — new flow omits rating (notes + photo only).
+  /// Green→GOOD, Blue→FAIR, Red→ATTENTION (nullable for skipped optional points).
   rating: z.enum(['GOOD', 'FAIR', 'ATTENTION', 'NOT_TESTED']).optional(),
-  observations: z.string().trim().min(1, 'Notes are required').max(2000),
+  /// Notes are optional for every inspection point.
+  observations: z.string().trim().max(2000).optional().default(''),
 });
 
 export const inspectionBatchSchema = z
