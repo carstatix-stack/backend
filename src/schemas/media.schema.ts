@@ -26,4 +26,9 @@ export const presignMediaSchema = z.object({
   gpsLng: z.number().min(-180).max(180),
 });
 
+export const confirmMediaSchema = z.object({
+  secureUrl: z.string().url().optional(),
+});
+
 export type PresignMediaInput = z.infer<typeof presignMediaSchema>;
+export type ConfirmMediaInput = z.infer<typeof confirmMediaSchema>;

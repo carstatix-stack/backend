@@ -13,19 +13,21 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   CORS_ORIGINS: z.string().default('http://localhost:*'),
 
-  // Object storage (AWS S3, Cloudflare R2, MinIO). All five vars required to enable uploads.
-  S3_REGION: z.string().optional(),
-  S3_BUCKET: z.string().optional(),
-  S3_ACCESS_KEY_ID: z.string().optional(),
-  S3_SECRET_ACCESS_KEY: z.string().optional(),
-  S3_ENDPOINT: z.string().url().optional(),
-  S3_PUBLIC_BASE_URL: z.string().url().optional(),
-  S3_FORCE_PATH_STYLE: z
-    .enum(['true', 'false'])
-    .default('false'),
-  S3_MAX_PHOTO_BYTES: z.coerce.number().int().positive().default(15 * 1024 * 1024),
-  S3_MAX_VIDEO_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
-  S3_PRESIGN_EXPIRES_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+  // Cloudinary — required for inspection photo uploads.
+  CLOUDINARY_CLOUD_NAME: z.string().min(1).optional(),
+  CLOUDINARY_API_KEY: z.string().min(1).optional(),
+  CLOUDINARY_API_SECRET: z.string().min(1).optional(),
+  CLOUDINARY_FOLDER: z.string().min(1).default('carstatix'),
+  CLOUDINARY_MAX_PHOTO_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 1024 * 1024),
+  CLOUDINARY_MAX_VIDEO_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50 * 1024 * 1024),
 
   // OpenAI — optional; required for AI DTC explanations
   OPENAI_API_KEY: z.string().min(1).optional(),
@@ -41,14 +43,17 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 
-export function isS3Configured(): boolean {
+export function isCloudinaryConfigured(): boolean {
   return Boolean(
-    env.S3_REGION &&
-      env.S3_BUCKET &&
-      env.S3_ACCESS_KEY_ID &&
-      env.S3_SECRET_ACCESS_KEY &&
-      env.S3_PUBLIC_BASE_URL,
+    env.CLOUDINARY_CLOUD_NAME?.trim() &&
+      env.CLOUDINARY_API_KEY?.trim() &&
+      env.CLOUDINARY_API_SECRET?.trim(),
   );
+}
+
+/** @deprecated Use [isCloudinaryConfigured]. */
+export function isMediaConfigured(): boolean {
+  return isCloudinaryConfigured();
 }
 
 export function getCorsOrigins(): string[] | boolean {

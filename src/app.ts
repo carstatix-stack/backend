@@ -5,7 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 import { ZodError } from 'zod';
 
-import { env, getCorsOrigins, isS3Configured } from './config/env.js';
+import { env, getCorsOrigins, isCloudinaryConfigured } from './config/env.js';
 import { isAppError } from './lib/errors.js';
 import { registerAuthHooks } from './plugins/auth.plugin.js';
 import { authRoutes } from './routes/auth.routes.js';
@@ -64,7 +64,7 @@ export async function buildApp() {
     status: 'ok',
     service: 'carstatix-api',
     timestamp: new Date().toISOString(),
-    mediaUploads: isS3Configured(),
+    mediaUploads: isCloudinaryConfigured(),
     aiExplanations: Boolean(env.OPENAI_API_KEY?.trim()),
   }));
 

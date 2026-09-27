@@ -8,7 +8,7 @@ import {
   progressStepSchema,
   startReportSchema,
 } from '../schemas/report.schema.js';
-import { presignMediaSchema } from '../schemas/media.schema.js';
+import { presignMediaSchema, confirmMediaSchema } from '../schemas/media.schema.js';
 import * as mediaService from '../services/media.service.js';
 import * as reportService from '../services/report.service.js';
 
@@ -65,7 +65,13 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/:id/media/:assetId/confirm', async (request, reply) => {
     const { id, assetId } = request.params as { id: string; assetId: string };
-    const result = await mediaService.confirmUpload(id, request.userId!, assetId);
+    const body = confirmMediaSchema.parse(request.body ?? {});
+    const result = await mediaService.confirmUpload(
+      id,
+      request.userId!,
+      assetId,
+      body,
+    );
     return reply.send(result);
   });
 

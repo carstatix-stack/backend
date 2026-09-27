@@ -1,18 +1,21 @@
 import type { MediaType } from '@prisma/client';
 import { nanoid } from 'nanoid';
 
-import { isS3Configured } from '../config/env.js';
-import { requireS3Config } from '../config/s3.js';
+import { requireCloudinaryConfig } from '../config/cloudinary.js';
+import { isCloudinaryConfigured } from '../config/env.js';
 import { AppError } from '../lib/errors.js';
 import { prisma } from '../lib/prisma.js';
-import type { PresignMediaInput } from '../schemas/media.schema.js';
-import * as reportService from './report.service.js';
+import type {
+  ConfirmMediaInput,
+  PresignMediaInput,
+} from '../schemas/media.schema.js';
 import {
-  assertObjectExists,
-  buildPublicObjectUrl,
-  createPresignedPutUrl,
-  deleteObject,
-} from './s3.service.js';
+  assertCloudinaryAssetExists,
+  buildCloudinaryPublicUrl,
+  createCloudinarySignedUpload,
+  deleteCloudinaryAsset,
+} from './cloudinary.service.js';
+import * as reportService from './report.service.js';
 
 const PHOTO_CONTENT_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -27,12 +30,12 @@ const VIDEO_CONTENT_TYPES: Record<string, string> = {
   'video/quicktime': 'mov',
 };
 
-function assertS3Enabled(): void {
-  if (!isS3Configured()) {
+function assertCloudinaryEnabled(): void {
+  if (!isCloudinaryConfigured()) {
     throw new AppError(
       503,
-      'Media uploads are not configured on this server',
-      'S3_NOT_CONFIGURED',
+      'Media uploads are not configured on this server (set Cloudinary env vars)',
+      'MEDIA_NOT_CONFIGURED',
     );
   }
 }
@@ -50,14 +53,14 @@ function resolveExtension(type: MediaType, contentType: string): string {
   return ext;
 }
 
-function buildStorageKey(
+function buildPublicId(
   reportId: string,
   type: MediaType,
   category: string,
-  ext: string,
 ): string {
-  const folder = type === 'PHOTO' ? 'photos' : 'videos';
-  return `reports/${reportId}/${folder}/${category}/${nanoid(12)}.${ext}`;
+  const { folder } = requireCloudinaryConfig();
+  const kind = type === 'PHOTO' ? 'photos' : 'videos';
+  return `${folder}/reports/${reportId}/${kind}/${category}/${nanoid(12)}`;
 }
 
 async function assertReportOwner(reportId: string, userId: string) {
@@ -69,11 +72,12 @@ export async function presignUpload(
   userId: string,
   input: PresignMediaInput,
 ) {
-  assertS3Enabled();
+  assertCloudinaryEnabled();
   await assertReportOwner(reportId, userId);
 
-  const cfg = requireS3Config();
-  const maxBytes = input.type === 'PHOTO' ? cfg.maxPhotoBytes : cfg.maxVideoBytes;
+  const cfg = requireCloudinaryConfig();
+  const maxBytes =
+    input.type === 'PHOTO' ? cfg.maxPhotoBytes : cfg.maxVideoBytes;
   if (input.fileSize > maxBytes) {
     throw new AppError(
       400,
@@ -82,8 +86,8 @@ export async function presignUpload(
     );
   }
 
-  const ext = resolveExtension(input.type, input.contentType);
-  const storageKey = buildStorageKey(reportId, input.type, input.category, ext);
+  resolveExtension(input.type, input.contentType);
+  const storageKey = buildPublicId(reportId, input.type, input.category);
   const capturedAt = new Date(input.capturedAt);
 
   const asset = await prisma.mediaAsset.create({
@@ -98,18 +102,20 @@ export async function presignUpload(
     },
   });
 
-  const { uploadUrl, expiresIn } = await createPresignedPutUrl(
-    storageKey,
-    input.contentType,
-  );
+  const signed = createCloudinarySignedUpload({
+    type: input.type,
+    publicId: storageKey,
+  });
 
   return {
+    provider: 'cloudinary' as const,
     assetId: asset.id,
     storageKey,
-    uploadUrl,
-    method: 'PUT' as const,
-    headers: { 'Content-Type': input.contentType },
-    expiresIn,
+    uploadUrl: signed.uploadUrl,
+    method: signed.method,
+    headers: {} as Record<string, string>,
+    fields: signed.fields,
+    expiresIn: signed.expiresIn,
   };
 }
 
@@ -117,8 +123,9 @@ export async function confirmUpload(
   reportId: string,
   userId: string,
   assetId: string,
+  input: ConfirmMediaInput = {},
 ) {
-  assertS3Enabled();
+  assertCloudinaryEnabled();
   await assertReportOwner(reportId, userId);
 
   const asset = await prisma.mediaAsset.findFirst({
@@ -142,8 +149,16 @@ export async function confirmUpload(
     };
   }
 
-  await assertObjectExists(asset.storageKey);
-  const url = buildPublicObjectUrl(asset.storageKey);
+  let url: string;
+  if (input.secureUrl && input.secureUrl.trim()) {
+    url = input.secureUrl.trim();
+  } else {
+    try {
+      url = await assertCloudinaryAssetExists(asset.type, asset.storageKey);
+    } catch {
+      url = buildCloudinaryPublicUrl(asset.type, asset.storageKey);
+    }
+  }
 
   const updated = await prisma.mediaAsset.update({
     where: { id: assetId },
@@ -186,7 +201,7 @@ export async function deleteMediaAsset(
   userId: string,
   assetId: string,
 ) {
-  assertS3Enabled();
+  assertCloudinaryEnabled();
   await assertReportOwner(reportId, userId);
 
   const asset = await prisma.mediaAsset.findFirst({
@@ -198,9 +213,9 @@ export async function deleteMediaAsset(
   }
 
   try {
-    await deleteObject(asset.storageKey);
+    await deleteCloudinaryAsset(asset.type, asset.storageKey);
   } catch {
-    // Object may never have been uploaded; still remove DB row.
+    // Asset may never have been uploaded; still remove DB row.
   }
 
   await prisma.mediaAsset.delete({ where: { id: assetId } });
