@@ -11,9 +11,9 @@ import type {
 } from '../schemas/media.schema.js';
 import {
   assertCloudinaryAssetExists,
-  buildCloudinaryPublicUrl,
   createCloudinarySignedUpload,
   deleteCloudinaryAsset,
+  isAllowedCloudinaryUrl,
 } from './cloudinary.service.js';
 import * as reportService from './report.service.js';
 
@@ -64,7 +64,7 @@ function buildPublicId(
 }
 
 async function assertReportOwner(reportId: string, userId: string) {
-  return reportService.getReportForOwner(reportId, userId);
+  return reportService.assertMutableReportOwner(reportId, userId);
 }
 
 export async function presignUpload(
@@ -105,6 +105,7 @@ export async function presignUpload(
   const signed = createCloudinarySignedUpload({
     type: input.type,
     publicId: storageKey,
+    maxBytes,
   });
 
   return {
@@ -149,14 +150,19 @@ export async function confirmUpload(
     };
   }
 
-  let url: string;
+  // Always verify the asset exists in our Cloudinary account.
+  const url = await assertCloudinaryAssetExists(asset.type, asset.storageKey);
+
+  // If the client sent a URL, it must match our cloud + storage key (ignore otherwise).
   if (input.secureUrl && input.secureUrl.trim()) {
-    url = input.secureUrl.trim();
-  } else {
-    try {
-      url = await assertCloudinaryAssetExists(asset.type, asset.storageKey);
-    } catch {
-      url = buildCloudinaryPublicUrl(asset.type, asset.storageKey);
+    const cfg = requireCloudinaryConfig();
+    const candidate = input.secureUrl.trim();
+    if (!isAllowedCloudinaryUrl(candidate, cfg.cloudName, asset.storageKey)) {
+      throw new AppError(
+        400,
+        'Invalid media URL for this upload',
+        'INVALID_MEDIA_URL',
+      );
     }
   }
 

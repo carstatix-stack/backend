@@ -20,10 +20,25 @@ import { vinRoutes } from './routes/vin.routes.js';
 export async function buildApp() {
   const app = Fastify({
     logger: env.NODE_ENV !== 'test',
-    trustProxy: true,
+    // Trust only the first proxy hop (Railway/CDN). Prevents client IP spoofing.
+    trustProxy: (_address: string, hop: number) => hop < 1,
   });
 
-  await app.register(helmet, { contentSecurityPolicy: false });
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        imgSrc: ["'self'", 'https://res.cloudinary.com', 'data:', 'blob:'],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", 'data:'],
+      },
+    },
+  });
   await app.register(cors, { origin: getCorsOrigins() });
   await app.register(rateLimit, {
     max: 200,
@@ -60,13 +75,18 @@ export async function buildApp() {
     });
   });
 
-  app.get('/health', async () => ({
-    status: 'ok',
-    service: 'carstatix-api',
-    timestamp: new Date().toISOString(),
-    mediaUploads: isCloudinaryConfigured(),
-    aiExplanations: Boolean(env.OPENAI_API_KEY?.trim()),
-  }));
+  app.get('/health', async () => {
+    if (env.NODE_ENV === 'production') {
+      return { status: 'ok' };
+    }
+    return {
+      status: 'ok',
+      service: 'carstatix-api',
+      timestamp: new Date().toISOString(),
+      mediaUploads: isCloudinaryConfigured(),
+      aiExplanations: Boolean(env.OPENAI_API_KEY?.trim()),
+    };
+  });
 
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(vinRoutes, { prefix: '/api/vin' });

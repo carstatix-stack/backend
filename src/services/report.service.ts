@@ -19,7 +19,8 @@ function hashIp(ip: string): string {
   return createHash('sha256').update(ip).digest('hex');
 }
 
-async function assertReportOwner(reportId: string, userId: string) {
+/** Owner check for read paths (draft + published OK). */
+export async function assertReportOwner(reportId: string, userId: string) {
   const report = await prisma.report.findFirst({
     where: { id: reportId, userId },
     include: { vehicle: true },
@@ -29,8 +30,23 @@ async function assertReportOwner(reportId: string, userId: string) {
     throw new AppError(404, 'Report not found', 'REPORT_NOT_FOUND');
   }
 
+  return report;
+}
+
+/** Owner check for write paths — published/archived reports are locked. */
+export async function assertMutableReportOwner(reportId: string, userId: string) {
+  const report = await assertReportOwner(reportId, userId);
+
   if (report.status === 'ARCHIVED') {
     throw new AppError(400, 'Report is archived', 'REPORT_ARCHIVED');
+  }
+
+  if (report.status === 'PUBLISHED') {
+    throw new AppError(
+      400,
+      'Published reports cannot be modified',
+      'REPORT_PUBLISHED',
+    );
   }
 
   return report;
@@ -42,6 +58,32 @@ export async function startReport(
   meta?: { ip?: string; userAgent?: string },
 ) {
   const vin = input.vin.toUpperCase();
+
+  // One active report per user+VIN (draft or published). Archived can be replaced.
+  const existing = await prisma.report.findFirst({
+    where: {
+      userId,
+      status: { in: ['DRAFT', 'PUBLISHED'] },
+      vehicle: { vin },
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: {
+      id: true,
+      status: true,
+      progressStep: true,
+      publicSlug: true,
+    },
+  });
+
+  if (existing) {
+    const statusLabel =
+      existing.status === 'PUBLISHED' ? 'published' : 'already in progress';
+    throw new AppError(
+      409,
+      `A report for this VIN is ${statusLabel}. Open it from Garage instead of creating a new one.`,
+      'VIN_REPORT_EXISTS',
+    );
+  }
 
   const vehicle = await prisma.vehicle.upsert({
     where: {
@@ -61,6 +103,11 @@ export async function startReport(
     },
   });
 
+  const consentAgentParts = [
+    meta?.userAgent,
+    `consent=${input.consentVersion}`,
+  ].filter(Boolean);
+
   const report = await prisma.report.create({
     data: {
       userId,
@@ -70,8 +117,11 @@ export async function startReport(
         create: {
           userId,
           vin,
+          agreedAt: input.consentAgreedAt
+            ? new Date(input.consentAgreedAt)
+            : new Date(),
           ipHash: meta?.ip ? hashIp(meta.ip) : undefined,
-          userAgent: meta?.userAgent,
+          userAgent: consentAgentParts.join(' | ') || undefined,
         },
       },
     },
@@ -110,22 +160,30 @@ export async function deleteDraftReport(reportId: string, userId: string) {
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.mediaAsset.deleteMany({ where: { reportId } });
-      await tx.inspectionItem.deleteMany({ where: { reportId } });
-      await tx.obdReading.deleteMany({ where: { reportId } });
-      await tx.cosmeticRating.deleteMany({ where: { reportId } });
-      await tx.listingDetail.deleteMany({ where: { reportId } });
-      await tx.consentLog.deleteMany({ where: { reportId } });
-      await tx.savedReport.deleteMany({ where: { reportId } });
-      await tx.obdScan.updateMany({
+    // Prefer sequential ops over interactive transactions — more reliable
+    // behind Railway/PgBouncer connection pooling.
+    await prisma.$transaction([
+      prisma.mediaAsset.deleteMany({ where: { reportId } }),
+      prisma.inspectionItem.deleteMany({ where: { reportId } }),
+      prisma.obdReading.deleteMany({ where: { reportId } }),
+      prisma.cosmeticRating.deleteMany({ where: { reportId } }),
+      prisma.listingDetail.deleteMany({ where: { reportId } }),
+      prisma.consentLog.deleteMany({ where: { reportId } }),
+      prisma.savedReport.deleteMany({ where: { reportId } }),
+      prisma.obdScan.updateMany({
         where: { reportId },
         data: { reportId: null },
-      });
-      await tx.report.delete({ where: { id: reportId } });
-    });
+      }),
+      prisma.report.delete({ where: { id: reportId } }),
+    ]);
   } catch (error) {
-    throw new AppError(409, 'Could not delete this draft. Try again.', 'DRAFT_DELETE_FAILED');
+    // Keep internal DB details in logs only — never send to clients.
+    console.error('Draft delete failed', { reportId, userId, error });
+    throw new AppError(
+      409,
+      'Could not delete this draft. Please try again.',
+      'DRAFT_DELETE_FAILED',
+    );
   }
 
   return { ok: true };
@@ -157,7 +215,7 @@ export async function updateProgressStep(
   userId: string,
   progressStep: number,
 ) {
-  await assertReportOwner(reportId, userId);
+  await assertMutableReportOwner(reportId, userId);
   await prisma.report.update({
     where: { id: reportId },
     data: { progressStep: Math.min(7, Math.max(1, progressStep)) },
@@ -169,7 +227,7 @@ export async function saveObdReading(
   userId: string,
   input: ObdReadingInput,
 ) {
-  await assertReportOwner(reportId, userId);
+  await assertMutableReportOwner(reportId, userId);
 
   const obd = await prisma.obdReading.upsert({
     where: { reportId },
@@ -198,7 +256,7 @@ export async function saveCosmetic(
   userId: string,
   input: CosmeticInput,
 ) {
-  await assertReportOwner(reportId, userId);
+  await assertMutableReportOwner(reportId, userId);
 
   const cosmetic = await prisma.cosmeticRating.upsert({
     where: { reportId },
@@ -219,7 +277,7 @@ export async function saveInspections(
   userId: string,
   input: InspectionBatchInput,
 ) {
-  await assertReportOwner(reportId, userId);
+  await assertMutableReportOwner(reportId, userId);
 
   await prisma.$transaction([
     prisma.inspectionItem.deleteMany({ where: { reportId } }),
@@ -246,7 +304,7 @@ export async function saveListing(
   userId: string,
   input: ListingInput,
 ) {
-  await assertReportOwner(reportId, userId);
+  await assertMutableReportOwner(reportId, userId);
 
   const listing = await prisma.listingDetail.upsert({
     where: { reportId },
@@ -277,6 +335,10 @@ export async function saveListing(
 
 export async function publishReport(reportId: string, userId: string) {
   const report = await assertReportOwner(reportId, userId);
+
+  if (report.status === 'ARCHIVED') {
+    throw new AppError(400, 'Report is archived', 'REPORT_ARCHIVED');
+  }
 
   if (report.status === 'PUBLISHED') {
     throw new AppError(400, 'Report is already published', 'ALREADY_PUBLISHED');

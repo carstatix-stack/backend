@@ -8,10 +8,23 @@ const vinParamSchema = z.object({
 });
 
 export async function vinRoutes(app: FastifyInstance): Promise<void> {
-  /** Decode VIN via NHTSA vPIC (free, no API key). */
-  app.get('/:vin', async (request, reply) => {
-    const { vin } = vinParamSchema.parse(request.params);
-    const vehicle = await vinService.decodeVin(vin);
-    return reply.send({ vehicle });
-  });
+  app.addHook('preHandler', app.authenticate);
+
+  /** Decode VIN via NHTSA vPIC (authenticated — matches app UX). */
+  app.get(
+    '/:vin',
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
+      const { vin } = vinParamSchema.parse(request.params);
+      const vehicle = await vinService.decodeVin(vin);
+      return reply.send({ vehicle });
+    },
+  );
 }

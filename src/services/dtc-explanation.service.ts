@@ -128,9 +128,13 @@ async function callOpenAi(
 
   if (!response.ok) {
     const body = await response.text();
+    console.error('OpenAI DTC explain failed', {
+      status: response.status,
+      body: body.slice(0, 500),
+    });
     throw new AppError(
       502,
-      `OpenAI request failed (${response.status}): ${body.slice(0, 200)}`,
+      'AI explanation service is temporarily unavailable',
       'AI_PROVIDER_ERROR',
     );
   }

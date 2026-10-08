@@ -5,6 +5,12 @@ import { AppError } from '../lib/errors.js';
 import { prisma } from '../lib/prisma.js';
 import type { ExploreQuery } from '../schemas/explore.schema.js';
 
+type MediaCover = {
+  type: string;
+  category: string;
+  url: string | null;
+};
+
 type ReportCardSource = {
   publicSlug: string | null;
   publishedAt: Date | null;
@@ -15,16 +21,38 @@ type ReportCardSource = {
     vin: string;
   };
   listing: {
-    inspector: Prisma.Decimal | null;
+    inspector: string | null;
     location: string | null;
   } | null;
+  media?: MediaCover[];
 };
+
+const COVER_CATEGORY_PRIORITY = [
+  'insp_brakes',
+  'insp_tires',
+  'insp_steering_suspension',
+  'front_exterior',
+];
+
+function resolveCoverImageUrl(report: ReportCardSource): string | null {
+  const photos = (report.media ?? []).filter(
+    (m) => m.type === 'PHOTO' && typeof m.url === 'string' && m.url.trim(),
+  );
+  if (!photos.length) return null;
+
+  for (const category of COVER_CATEGORY_PRIORITY) {
+    const match = photos.find((m) => m.category === category);
+    if (match?.url) return match.url.trim();
+  }
+  return photos[0]!.url!.trim();
+}
 
 export function toPublicReportCard(report: ReportCardSource) {
   return {
     slug: report.publicSlug!,
     publicUrl: `${env.PUBLIC_BASE_URL}/r/${report.publicSlug}`,
     publishedAt: report.publishedAt,
+    coverImageUrl: resolveCoverImageUrl(report),
     vehicle: {
       make: report.vehicle.make,
       model: report.vehicle.model,
@@ -43,6 +71,11 @@ export function toPublicReportCard(report: ReportCardSource) {
 const cardInclude = {
   vehicle: true,
   listing: true,
+  media: {
+    where: { type: 'PHOTO' as const, url: { not: null } },
+    orderBy: { createdAt: 'desc' as const },
+    select: { type: true, category: true, url: true },
+  },
 } as const;
 
 export async function listExploreFeed(query: ExploreQuery) {

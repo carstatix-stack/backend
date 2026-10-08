@@ -18,18 +18,10 @@ function escapeHtml(value: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
-function formatPrice(value: unknown): string | null {
+function formatInspector(value: unknown): string | null {
   if (value == null) return null;
-  const num =
-    typeof value === 'object' && value !== null && 'toString' in value
-      ? Number((value as { toString(): string }).toString())
-      : Number(value);
-  if (Number.isNaN(num)) return null;
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(num);
+  const text = String(value).trim();
+  return text.length === 0 ? null : text;
 }
 
 function categoryLabel(category: string): string {
@@ -246,7 +238,7 @@ function renderListing(listing: PublicReportData['listing']): string {
     return '<p class="empty">No listing details recorded.</p>';
   }
 
-  const price = formatPrice(listing.inspector);
+  const price = formatInspector(listing.inspector);
   const parts: string[] = [];
   if (price) {
     parts.push(
@@ -510,7 +502,7 @@ export function renderPublicReportHtml(data: PublicReportData): string {
 
   const obdSummary = data.obd as Record<string, unknown> | null;
   const cover = pickCoverPhoto(data.media);
-  const price = formatPrice(data.listing?.inspector);
+  const price = formatInspector(data.listing?.inspector);
   const hasObd = Boolean(obdSummary);
   const hasInspection = Boolean(data.inspections?.length);
 

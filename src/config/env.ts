@@ -3,6 +3,32 @@ import { z } from 'zod';
 
 config();
 
+function resolvePublicBaseUrl(): string {
+  const raw = (process.env.PUBLIC_BASE_URL ?? '').trim().replace(/\/$/, '');
+  const railwayDomain = (process.env.RAILWAY_PUBLIC_DOMAIN ?? '')
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/$/, '');
+
+  const isLocal =
+    !raw ||
+    raw.includes('localhost') ||
+    raw.includes('127.0.0.1') ||
+    raw.includes('0.0.0.0');
+
+  // In production, never ship QR/report links that point at localhost.
+  if (process.env.NODE_ENV === 'production' && isLocal) {
+    if (railwayDomain) return `https://${railwayDomain}`;
+    return 'https://api.carstatix.com';
+  }
+
+  if (raw) return raw;
+  if (railwayDomain) return `https://${railwayDomain}`;
+  return 'http://localhost:3000';
+}
+
+process.env.PUBLIC_BASE_URL = resolvePublicBaseUrl();
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
@@ -10,8 +36,9 @@ const envSchema = z.object({
   PUBLIC_BASE_URL: z.string().url(),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
-  JWT_EXPIRES_IN: z.string().default('7d'),
-  CORS_ORIGINS: z.string().default('http://localhost:*'),
+  // Shorter access-token lifetime reduces damage from a stolen JWT.
+  JWT_EXPIRES_IN: z.string().default('12h'),
+  CORS_ORIGINS: z.string().default('http://localhost:3000'),
 
   // Cloudinary — required for inspection photo uploads.
   CLOUDINARY_CLOUD_NAME: z.string().min(1).optional(),
@@ -60,5 +87,22 @@ export function getCorsOrigins(): string[] | boolean {
   if (env.NODE_ENV === 'development') {
     return true;
   }
-  return env.CORS_ORIGINS.split(',').map((o) => o.trim());
+
+  const origins = env.CORS_ORIGINS.split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  // Never allow wildcard CORS in production.
+  if (origins.length === 0 || origins.includes('*')) {
+    console.warn(
+      'CORS_ORIGINS missing or "*" in production — falling back to PUBLIC_BASE_URL origin only.',
+    );
+    try {
+      return [new URL(env.PUBLIC_BASE_URL).origin];
+    } catch {
+      return ['https://api.carstatix.com'];
+    }
+  }
+
+  return origins;
 }

@@ -18,18 +18,25 @@ function resourceTypeFor(type: MediaType): 'image' | 'video' {
   return type === 'VIDEO' ? 'video' : 'image';
 }
 
+const PHOTO_FORMATS = 'jpg,png,webp,heic,heif';
+const VIDEO_FORMATS = 'mp4,mov';
+
 export function createCloudinarySignedUpload(params: {
   type: MediaType;
   publicId: string;
+  maxBytes: number;
 }): CloudinarySignedUpload {
   const cfg = ensureCloudinaryConfigured();
   const timestamp = Math.floor(Date.now() / 1000);
   const resourceType = resourceTypeFor(params.type);
+  const allowedFormats = params.type === 'VIDEO' ? VIDEO_FORMATS : PHOTO_FORMATS;
 
-  // Only params that are sent with the upload (except file/api_key/resource_type) are signed.
+  // Sign every constraint the client must send (except file/api_key/resource_type).
   const toSign: Record<string, string | number> = {
     public_id: params.publicId,
     timestamp,
+    max_file_size: params.maxBytes,
+    allowed_formats: allowedFormats,
   };
 
   const signature = cloudinary.utils.api_sign_request(toSign, cfg.apiSecret);
@@ -37,12 +44,15 @@ export function createCloudinarySignedUpload(params: {
   return {
     uploadUrl: `https://api.cloudinary.com/v1_1/${cfg.cloudName}/${resourceType}/upload`,
     method: 'POST',
-    expiresIn: 55 * 60,
+    // Short-lived upload permission (10 minutes).
+    expiresIn: 10 * 60,
     fields: {
       api_key: cfg.apiKey,
       timestamp: String(timestamp),
       signature,
       public_id: params.publicId,
+      max_file_size: String(params.maxBytes),
+      allowed_formats: allowedFormats,
     },
   };
 }
@@ -54,6 +64,24 @@ export function buildCloudinaryPublicUrl(
   const { cloudName } = requireCloudinaryConfig();
   const resourceType = resourceTypeFor(type);
   return `https://res.cloudinary.com/${cloudName}/${resourceType}/upload/${publicId}`;
+}
+
+/** True when URL is https Cloudinary for our cloud and contains the storage key. */
+export function isAllowedCloudinaryUrl(
+  url: string,
+  cloudName: string,
+  storageKey: string,
+): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    if (parsed.hostname !== 'res.cloudinary.com') return false;
+    const path = parsed.pathname;
+    if (!path.startsWith(`/${cloudName}/`)) return false;
+    return path.includes(`/${storageKey}`) || path.includes(`/${encodeURIComponent(storageKey)}`);
+  } catch {
+    return false;
+  }
 }
 
 export async function assertCloudinaryAssetExists(
@@ -70,9 +98,17 @@ export async function assertCloudinaryAssetExists(
     const url =
       (typeof result.secure_url === 'string' && result.secure_url) ||
       (typeof result.url === 'string' && result.url) ||
-      buildCloudinaryPublicUrl(type, publicId);
+      null;
+    if (!url) {
+      throw new AppError(
+        400,
+        'Uploaded file not found in Cloudinary. Complete the upload before confirming.',
+        'UPLOAD_NOT_FOUND',
+      );
+    }
     return url;
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError(
       400,
       'Uploaded file not found in Cloudinary. Complete the upload before confirming.',
